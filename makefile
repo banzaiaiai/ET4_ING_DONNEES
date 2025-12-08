@@ -45,6 +45,10 @@ $(BUILD_DIR)/%.cpp.o: %.cpp
 clean:
 	rm -r $(BUILD_DIR)
 
+.PHONY: scrape
+scrape:
+	cd src/scrapper_jpbox-office && python3 main.py
+
 # Include the .d makefiles. The - at the front suppresses the errors of missing
 # Makefiles. Initially, all the .d files will be missing, and we don't want those
 # errors to show up.

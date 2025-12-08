@@ -4,29 +4,9 @@
 #include <string>
 #include <vector>
 #include <unordered_map>
+#include <algorithm>
 
 using namespace std;
-
-// // Lecture TSV
-// std::vector<std::vector<std::string>>
-// read_tsv(std::ifstream *ifs, std::vector<std::vector<std::string>> items) {
-//   if (ifs->fail()) {
-//     std::cerr << "error" << std::endl;
-//     return {};
-//   }
-//   std::string line;
-//   while (getline(*ifs, line)) {
-//     std::stringstream ss(line);
-//     std::vector<std::string> item;
-//     std::string tmp;
-//     while (getline(ss, tmp, '\t')) {
-//       item.push_back(tmp);
-//     }
-//     items.push_back(item);
-//   }
-//   return items;
-// }
-
 
 void parseTitles(){
 
@@ -80,6 +60,12 @@ void addRatings(){
     std::cerr << "Error: Cannot create file " << "data/parsed/titlesWithRatings.tsv" << std::endl;
     return;
   }
+
+  ofs << "ID\t";
+  ofs << "GENRE\t";
+  ofs << "NAME\t";
+  ofs << "AVGRATTING\t";
+  ofs << "NBRATTINGS\n";
 
   // Step 1: Load all ratings into a hash map for O(1) lookup
   // Key: tconst, Value: pair<averageRating, numVotes>
@@ -147,69 +133,106 @@ void addRatings(){
 
 }
 
-// vector<vector<string>> parseTitleBasics(){
+void addEstimate(){
 
-//   std::ifstream titres("data/title.basics.tsv");
+  ifstream productions("data/parsed/productionCinématographique.tsv");
+  if (productions.fail()) {
+    std::cerr << "error opening productionCinématographique.tsv" << std::endl;
+    return;
+  }
 
-//   vector<vector<string>> titleBasics;
-//   titleBasics = read_tsv(&titres, titleBasics);
-//   vector<vector<string>> retour;
-//     for(auto film:titleBasics){
-//       vector<string> tmpfilm;
-//       for(int i=0;i<film.size();i++){
-//         if(i==0 || i==3){
-//           tmpfilm.push_back(film[i]);
-//         }
-//       }
-//       retour.push_back(tmpfilm);
-//     }
-//   return retour;
-// }
+  ifstream titlesRatings("data/parsed/titlesWithRatings.tsv");
+  if(titlesRatings.fail()){
+    std::cerr << "error opening titlesWithRatings.tsv" << std::endl;
+    return;
+  }
 
+  std::ofstream ofs("data/parsed/titlesRatingsEstimates.tsv");
+  if(ofs.fail()){
+    std::cerr << "Error: Cannot create file " << "data/parsed/titlesRatingsEstimates.tsv" << std::endl;
+    return;
+  }
 
-
-// vector<vector<string>> joinTitleRating(vector<vector<string>> titles){
-//   int i=0; //Titles
-//   int j=0; //Ratings
-
-//    std::ifstream titleRatings("data/title.ratings.tsv");
-
-//   vector<vector<string>> ratings;
-//   ratings = read_tsv(&titleRatings, ratings);
-
-
-//   for(i;i<titles.size();i++){
-    
-//     while (j < ratings.size() && ratings[j][0]!=titles[i][0]){
-//       j++;
-//     }
-    
-//     // Only add ratings if we found a match
-//     if(j < ratings.size() && ratings[j][0] == titles[i][0]){
-//       titles[i].push_back(ratings[j][1]);
-//       titles[i].push_back(ratings[j][2]);
-//     }
-    
-//   }
-
-//   return titles;
+  // Step 1: Load productions data into a hash map
+  // Key: TITRE (normalized), Value: pair<REALISATEUR, DEVIS>
+  unordered_map<string, pair<string, string>> productionsMap;
   
-// }
+  string line;
+  // Skip header line in productions file
+  getline(productions, line);
+  
+  while(getline(productions, line)){
+    stringstream ss(line);
+    vector<string> items;
+    string tmp;
+    while(getline(ss, tmp, '\t')){
+      items.push_back(tmp);
+    }
+    if(items.size() >= 5){
+      // Normalize title for matching (convert to lowercase)
+      string title = items[1];
+      transform(title.begin(), title.end(), title.begin(), ::tolower);
+      // Store TITRE -> (RÉALISATEUR, DEVIS)
+      productionsMap[title] = make_pair(items[2], items[4]);
+    }
+  }
+  productions.close();
+  
+  std::cout << "Loaded " << productionsMap.size() << " productions into memory" << std::endl;
+  
+  // Step 2: Write header to output file
+  getline(titlesRatings, line); // Read header from titlesRatings
+  ofs << line << '\t' << "REALISATEUR\t" << "DEVIS\n";
+  
+  // Step 3: Process titlesRatings and join with productions
+  int matchCount = 0;
+  int totalCount = 0;
+  
+  while(getline(titlesRatings, line)){
+    stringstream ss(line);
+    vector<string> items;
+    string tmp;
+    while(getline(ss, tmp, '\t')){
+      items.push_back(tmp);
+    }
+    
+    if(items.size() >= 3){
+      totalCount++;
+      
+      // Write all existing fields
+      ofs << line;
+      
+      // Normalize title for matching
+      string title = items[2];
+      transform(title.begin(), title.end(), title.begin(), ::tolower);
+      
+      // Check if production data exists and add it
+      auto it = productionsMap.find(title);
+      if(it != productionsMap.end()){
+        ofs << '\t' << it->second.first;  // RÉALISATEUR
+        ofs << '\t' << it->second.second; // DEVIS
+        matchCount++;
+      } else {
+        // No production data found, add empty fields
+        ofs << '\t' << "\\N\t\\N";
+      }
+      ofs << '\n';
+    }
+  }
+  
+  titlesRatings.close();
+  ofs.close();
+  
+  std::cout << "File titlesRatingsEstimates.tsv created successfully" << std::endl;
+  std::cout << "Matched " << matchCount << " out of " << totalCount << " titles with production data" << std::endl;
+
+}
 
 int main(int argc, char *argv[]) {
   
-  // vector<vector<string>> titles = parseTitleBasics();
-  // vector<vector<string>> ratings = joinTitleRating(titles);
-
-  // for(int i=0;i<100;i++){
-  //   for(auto value:ratings[i]){
-  //     cout<<value<<" ";
-  //   }
-  //   cout<<"\n";
-  // }
-
   parseTitles();
   addRatings();
+  addEstimate();
 
   return 0;
 }
