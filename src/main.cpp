@@ -23,22 +23,48 @@ void parseTitles(){
   }
 
   string line;
-  while(getline(titres,line)){
+  int count = 0;
+  // Skip header line
+  getline(titres, line);
+  
+  while(getline(titres, line)){
     stringstream ss(line);
     vector<string> items;
     string tmp;
-    while(getline(ss,tmp,'\t')){
+    while(getline(ss, tmp, '\t')){
       items.push_back(tmp);
     }
-    if(items[1]== "video" || items[1]== "movie" || items[1]== "tvMovie"){
-      ofs << items[0]<<'\t';//ID
-      ofs << items[1]<<'\t';//Type
-      ofs << items[3]<<'\n';//Title
+    
+    // Check if we have enough columns and if GENRE is movie, tvMovie, or video
+    if(items.size() >= 7 && (items[1] == "movie" || items[1] == "tvMovie" || items[1] == "video")){
+      ofs << items[0] << '\t';    // ID (tconst)
+      ofs << items[1] << '\t';    // GENRE (titleType)
+      ofs << items[3] << '\t';    // TITLE (originalTitle)
+      ofs << items[5] << '\n';    // STARTYEAR (endYear)
+      count++;
     }
   }
 
   ofs.close();
   std::cout << "File created successfully" << std::endl;
+  std::cout << "Parsed "<< count << "lines for titles.basic.tsv" << std::endl;
+
+}
+
+void parseProdCine(){
+  // Call Python script to convert Excel to TSV
+  std::cout << "Converting Excel file to TSV..." << std::endl;
+  
+  int result = system("venv/bin/python3 src/excel_to_tsv.py");
+  
+  if(result != 0){
+    std::cerr << "Error: Failed to convert Excel file to TSV" << std::endl;
+    std::cerr << "Please ensure Python 3 and openpyxl are installed" << std::endl;
+    std::cerr << "Install with: pip install openpyxl or create a venv" << std::endl;
+    return;
+  }
+  
+  std::cout << "Excel file converted successfully" << std::endl;
 }
 
 void addRatings(){
@@ -64,6 +90,7 @@ void addRatings(){
   ofs << "ID\t";
   ofs << "GENRE\t";
   ofs << "NAME\t";
+  ofs << "DATE\t";
   ofs << "AVGRATTING\t";
   ofs << "NBRATTINGS\n";
 
@@ -103,14 +130,15 @@ void addRatings(){
       items.push_back(tmp);
     }
     
-    if(items.size() >= 3){
+    if(items.size() >= 4){
       totalCount++;
       string tconst = items[0];
       
       // Write title info
       ofs << items[0] << '\t'; // ID
-      ofs << items[1] << '\t'; // Type
-      ofs << items[2] << '\t'; // Title
+      ofs << items[1] << '\t'; // GENRE
+      ofs << items[2] << '\t'; // TITLE
+      ofs << items[3] << '\t'; // DATE (ENDYEAR)
       
       // Check if rating exists and add it
       auto it = ratingsMap.find(tconst);
@@ -154,7 +182,7 @@ void addEstimate(){
   }
 
   // Step 1: Load productions data into a hash map
-  // Key: TITRE (normalized), Value: pair<REALISATEUR, DEVIS>
+  // Key: TITRE (normalized) + DATE, Value: pair<REALISATEUR, DEVIS>
   unordered_map<string, pair<string, string>> productionsMap;
   
   string line;
@@ -172,8 +200,13 @@ void addEstimate(){
       // Normalize title for matching (convert to lowercase)
       string title = items[1];
       transform(title.begin(), title.end(), title.begin(), ::tolower);
-      // Store TITRE -> (RÉALISATEUR, DEVIS)
-      productionsMap[title] = make_pair(items[2], items[4]);
+      string date = items[4]; // DATE column
+      
+      // Create composite key: title|date
+      string key = title + "|" + date;
+      
+      // Store (TITRE + DATE) -> (RÉALISATEUR, DEVIS)
+      productionsMap[key] = make_pair(items[2], items[3]);
     }
   }
   productions.close();
@@ -196,7 +229,7 @@ void addEstimate(){
       items.push_back(tmp);
     }
     
-    if(items.size() >= 3){
+    if(items.size() >= 4){
       totalCount++;
       
       // Write all existing fields
@@ -205,9 +238,13 @@ void addEstimate(){
       // Normalize title for matching
       string title = items[2];
       transform(title.begin(), title.end(), title.begin(), ::tolower);
+      string date = items[3]; // DATE column from titlesWithRatings
+      
+      // Create composite key: title|date
+      string key = title + "|" + date;
       
       // Check if production data exists and add it
-      auto it = productionsMap.find(title);
+      auto it = productionsMap.find(key);
       if(it != productionsMap.end()){
         ofs << '\t' << it->second.first;  // RÉALISATEUR
         ofs << '\t' << it->second.second; // DEVIS
@@ -231,6 +268,7 @@ void addEstimate(){
 int main(int argc, char *argv[]) {
   
   parseTitles();
+  parseProdCine();
   addRatings();
   addEstimate();
 
