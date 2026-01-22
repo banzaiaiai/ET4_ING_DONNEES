@@ -40,16 +40,16 @@ string moveArticleToFront(string title) {
     return title;
 }
 
-void parseTitles() {
+void parseBasicTitles() {
     ifstream titres("data/title.basics.tsv");
     if (titres.fail()) {
         cerr << "Error opening data/title.basics.tsv" << endl;
         return;
     }
 
-    ofstream ofs("data/parsed/titles.tsv");
+    ofstream ofs("data/parsed/01_basic_titles.tsv");
     if (ofs.fail()) {
-        cerr << "Error: Cannot create file data/parsed/titles.tsv" << endl;
+        cerr << "Error: Cannot create file data/parsed/01_basic_titles.tsv" << endl;
         return;
     }
 
@@ -65,7 +65,8 @@ void parseTitles() {
             items.push_back(tmp);
         }
 
-        if (items.size() >= 7 && (items[1] == "movie" || items[1] == "tvMovie" || items[1] == "video")) {
+        if (items.size() >= 7 &&
+            (items[1] == "movie" || items[1] == "tvMovie" || items[1] == "video")) {
             ofs << items[0] << '\t';
             ofs << items[1] << '\t';
             ofs << items[3] << '\t';
@@ -76,11 +77,11 @@ void parseTitles() {
     }
 
     ofs.close();
-    cout << "File titles.tsv created successfully" << endl;
+    cout << "File 01_basic_titles.tsv created successfully" << endl;
     cout << "Parsed " << count << " lines from title.basics.tsv" << endl;
 }
 
-void parseProdCine() {
+void parseProductions() {
     cout << "Converting Excel file to TSV..." << endl;
 
     int result = system("venv/bin/python3 src/excel_to_tsv.py");
@@ -94,22 +95,22 @@ void parseProdCine() {
     cout << "Excel file converted successfully" << endl;
 }
 
-void addRatings() {
+void mergeRatings() {
     ifstream ratings("data/title.ratings.tsv");
     if (ratings.fail()) {
         cerr << "Error opening data/title.ratings.tsv" << endl;
         return;
     }
 
-    ifstream titles("data/parsed/titles.tsv");
+    ifstream titles("data/parsed/01_basic_titles.tsv");
     if (titles.fail()) {
-        cerr << "Error opening data/parsed/titles.tsv" << endl;
+        cerr << "Error opening data/parsed/01_basic_titles.tsv" << endl;
         return;
     }
 
-    ofstream ofs("data/parsed/titlesWithRatings.tsv");
+    ofstream ofs("data/parsed/02_titles_with_ratings.tsv");
     if (ofs.fail()) {
-        cerr << "Error: Cannot create file data/parsed/titlesWithRatings.tsv" << endl;
+        cerr << "Error: Cannot create file data/parsed/02_titles_with_ratings.tsv" << endl;
         return;
     }
 
@@ -168,26 +169,26 @@ void addRatings() {
     titles.close();
     ofs.close();
 
-    cout << "File titlesWithRatings.tsv created successfully" << endl;
+    cout << "File 02_titles_with_ratings.tsv created successfully" << endl;
     cout << "Matched " << matchCount << " out of " << totalCount << " titles with ratings" << endl;
 }
 
-void addEstimate() {
+void mergeProductionData() {
     ifstream productions("data/parsed/productionCinématographique.tsv");
     if (productions.fail()) {
         cerr << "Error opening data/parsed/productionCinématographique.tsv" << endl;
         return;
     }
 
-    ifstream titlesRatings("data/parsed/titlesWithRatings.tsv");
+    ifstream titlesRatings("data/parsed/02_titles_with_ratings.tsv");
     if (titlesRatings.fail()) {
-        cerr << "Error opening data/parsed/titlesWithRatings.tsv" << endl;
+        cerr << "Error opening data/parsed/02_titles_with_ratings.tsv" << endl;
         return;
     }
 
-    ofstream ofs("data/final/donnes.tsv");
+    ofstream ofs("data/parsed/03_titles_with_production.tsv");
     if (ofs.fail()) {
-        cerr << "Error: Cannot create file data/final/donnes.tsv" << endl;
+        cerr << "Error: Cannot create file data/parsed/03_titles_with_production.tsv" << endl;
         return;
     }
 
@@ -288,14 +289,150 @@ void addEstimate() {
 
     ofs.close();
 
-    cout << "File donnes.tsv created successfully" << endl;
-    cout << "Matched " << matchCount << " productions out of " << prodCount << " to " << allTitles.size() << " titles" << endl;
+    cout << "File 03_titles_with_production.tsv created successfully" << endl;
+    cout << "Matched " << matchCount << " productions out of " << prodCount << " to "
+         << allTitles.size() << " titles" << endl;
+}
+
+void mergeBoxOffice() {
+    ifstream boxOfficeFile("data/french_films_box_office_in_france.tsv");
+    if (boxOfficeFile.fail()) {
+        cerr << "Error opening data/french_films_box_office_in_france.tsv" << endl;
+        return;
+    }
+
+    ifstream donnesFile("data/parsed/03_titles_with_production.tsv");
+    if (donnesFile.fail()) {
+        cerr << "Error opening data/parsed/03_titles_with_production.tsv" << endl;
+        return;
+    }
+
+    ofstream ofsComplete("data/final/complete_dataset.tsv");
+    if (ofsComplete.fail()) {
+        cerr << "Error: Cannot create file data/final/complete_dataset.tsv" << endl;
+        return;
+    }
+
+    ofstream ofsFiltered("data/final/filtered_dataset.tsv");
+    if (ofsFiltered.fail()) {
+        cerr << "Error: Cannot create file data/final/filtered_dataset.tsv" << endl;
+        return;
+    }
+
+    unordered_map<string, unordered_map<int, string>> boxOfficeMap;
+    string line;
+    getline(boxOfficeFile, line);
+
+    int boxOfficeCount = 0;
+    while (getline(boxOfficeFile, line)) {
+        stringstream ss(line);
+        vector<string> items;
+        string tmp;
+        while (getline(ss, tmp, '\t')) {
+            items.push_back(tmp);
+        }
+
+        if (items.size() >= 5) {
+            string title = formatTitle(items[0]);
+            int year = 0;
+            try {
+                year = stoi(items[3]);
+            } catch (...) {
+                continue;
+            }
+            string boxOffice = items[4];
+
+            boxOfficeMap[title][year] = boxOffice;
+            boxOfficeCount++;
+        }
+    }
+    boxOfficeFile.close();
+
+    cout << "Loaded " << boxOfficeCount << " box office entries into memory" << endl;
+
+    string headerLine;
+    getline(donnesFile, headerLine);
+
+    ofsComplete << headerLine << "\tBOXOFFICE\n";
+    ofsFiltered << headerLine << "\tBOXOFFICE\n";
+
+    int matchCount = 0;
+    int filteredCount = 0;
+    int totalCount = 0;
+
+    while (getline(donnesFile, line)) {
+        stringstream ss(line);
+        vector<string> items;
+        string tmp;
+        while (getline(ss, tmp, '\t')) {
+            items.push_back(tmp);
+        }
+
+        if (items.size() >= 9) {
+            totalCount++;
+
+            string formattedTitle = items[3];
+            int year = 0;
+            try {
+                year = stoi(items[4]);
+            } catch (...) {
+                year = 0;
+            }
+
+            string boxOffice = "\\N";
+
+            auto titleIt = boxOfficeMap.find(formattedTitle);
+            if (titleIt != boxOfficeMap.end()) {
+                auto yearIt = titleIt->second.find(year);
+                if (yearIt != titleIt->second.end()) {
+                    boxOffice = yearIt->second;
+                    matchCount++;
+                } else {
+                    int bestDiff = 999999;
+                    for (const auto& yearPair : titleIt->second) {
+                        int diff = abs(year - yearPair.first);
+                        if (diff <= 2 && diff < bestDiff) {
+                            bestDiff = diff;
+                            boxOffice = yearPair.second;
+                            matchCount++;
+                        }
+                    }
+                }
+            }
+
+            ofsComplete << line << '\t' << boxOffice << '\n';
+
+            bool isComplete = true;
+            for (size_t i = 5; i < items.size(); i++) {
+                if (items[i] == "\\N") {
+                    isComplete = false;
+                    break;
+                }
+            }
+
+            if (isComplete && boxOffice != "\\N") {
+                ofsFiltered << line << '\t' << boxOffice << '\n';
+                filteredCount++;
+            }
+        }
+    }
+
+    donnesFile.close();
+    ofsComplete.close();
+    ofsFiltered.close();
+
+    cout << "File complete_dataset.tsv created successfully" << endl;
+    cout << "File filtered_dataset.tsv created successfully" << endl;
+    cout << "Matched " << matchCount << " titles with box office data out of " << totalCount
+         << " total titles" << endl;
+    cout << "Filtered file contains " << filteredCount << " complete entries" << endl;
 }
 
 int main() {
-    parseTitles();
-    parseProdCine();
-    addRatings();
-    addEstimate();
+    parseBasicTitles();
+    parseProductions();
+    mergeRatings();
+    mergeProductionData();
+    mergeBoxOffice();
     return 0;
 }
